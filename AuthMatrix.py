@@ -508,10 +508,10 @@ class BurpExtender(IBurpExtender, ITab, IMessageEditorController, IContextMenuFa
 
         # Handles checkbox, regex, and enabled coloring
         # Must be bellow the customizeUiComponent calls
-        self._messageTable.setDefaultRenderer(Boolean, SuccessBooleanRenderer(self._messageTable.getDefaultRenderer(Boolean), self._db))
+        self._messageTable.setDefaultRenderer(Boolean, SuccessBooleanRenderer(self._db))
         self._messageTable.setDefaultRenderer(str, RegexRenderer(self._messageTable.getDefaultRenderer(str), self._db))
         self._userTable.setDefaultRenderer(str, UserEnabledRenderer(self._userTable.getDefaultRenderer(str), self._db))
-        self._userTable.setDefaultRenderer(Boolean, UserEnabledRenderer(self._userTable.getDefaultRenderer(Boolean), self._db))
+        self._userTable.setDefaultRenderer(Boolean, UserEnabledRenderer(PlainBooleanRenderer(), self._db))
         self._chainTable.setDefaultRenderer(str, ChainEnabledRenderer(self._chainTable.getDefaultRenderer(str), self._db))
 
 
@@ -2635,28 +2635,40 @@ class ChainTable(JTable):
 
 
 
-# For color-coding checkboxes in the message table
-# Also Grey when not enabled
-class SuccessBooleanRenderer(JCheckBox,TableCellRenderer):
+# A self-contained Boolean cell renderer standing in for the look-and-feel's
+# own default Boolean renderer. Some LaFs (e.g. FlatLaf, used by recent Burp
+# versions) return a renderer component that is not a JCheckBox-compatible
+# object (it can lack a usable setSelected()), so we render the checkbox
+# ourselves instead of wrapping/delegating to whatever the table hands back.
+class PlainBooleanRenderer(JCheckBox, TableCellRenderer):
 
-    def __init__(self, defaultCellRender, db):
+    def __init__(self):
         self.setOpaque(True)
         self.setHorizontalAlignment(JLabel.CENTER)
-        self._defaultCellRender = defaultCellRender
+
+    def getTableCellRendererComponent(self, table, value, isSelected, hasFocus, row, column):
+        if value:
+            self.setSelected(True)
+        else:
+            self.setSelected(False)
+        if isSelected:
+            self.setForeground(table.getSelectionForeground())
+            self.setBackground(table.getSelectionBackground())
+        else:
+            self.setForeground(table.getForeground())
+            self.setBackground(table.getBackground())
+        return self
+
+# For color-coding checkboxes in the message table
+# Also Grey when not enabled
+class SuccessBooleanRenderer(PlainBooleanRenderer):
+
+    def __init__(self, db):
+        PlainBooleanRenderer.__init__(self)
         self._db = db
 
     def getTableCellRendererComponent(self, table, value, isSelected, hasFocus, row, column):
-        cell = self._defaultCellRender.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column)
-        if value:
-            cell.setSelected(True)
-        else:
-            cell.setSelected(False)
-        if isSelected:
-            cell.setForeground(table.getSelectionForeground())
-            cell.setBackground(table.getSelectionBackground())
-        else:
-            cell.setForeground(table.getForeground())
-            cell.setBackground(table.getBackground())
+        cell = PlainBooleanRenderer.getTableCellRendererComponent(self, table, value, isSelected, hasFocus, row, column)
 
         # Color based on results
         if column >= self._db.STATIC_MESSAGE_TABLE_COLUMN_COUNT:
